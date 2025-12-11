@@ -22,12 +22,14 @@ export default function DashboardPage() {
   // Calculate stats and monthly data when transactions change
   useEffect(() => {
     if (transactions.length > 0) {
-      setStats(calculateDashboardStats());
-      setMonthlyData(calculateMonthlyOverview());
+      const calculatedStats = calculateDashboardStats();
+      const calculatedMonthlyData = calculateMonthlyOverview();
+      setStats(calculatedStats);
+      setMonthlyData(calculatedMonthlyData);
     }
   }, [transactions, calculateDashboardStats, calculateMonthlyOverview]);
 
-  if (loading) {
+  if (loading && transactions.length === 0) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-xl">Loading dashboard data...</div>
@@ -48,7 +50,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              ₹{stats.totalRevenue.toLocaleString('en-IN')}
+              ₹{typeof stats.totalRevenue === 'number' && !isNaN(stats.totalRevenue) ? stats.totalRevenue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'}
             </div>
             <p className="text-xs text-muted-foreground">
               from {stats.totalSales} sales
@@ -62,7 +64,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              ₹{stats.totalPurchases.toLocaleString('en-IN')}
+              ₹{typeof stats.totalPurchases === 'number' && !isNaN(stats.totalPurchases) ? stats.totalPurchases.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'}
             </div>
             <p className="text-xs text-muted-foreground">
               from {stats.totalPurchaseEntries} purchases
@@ -76,7 +78,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              ₹{stats.profit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              ₹{typeof stats.profit === 'number' && !isNaN(stats.profit) ? stats.profit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'}
             </div>
             <p className="text-xs text-muted-foreground">
               Based on base amounts

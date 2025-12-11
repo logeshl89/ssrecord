@@ -1,5 +1,5 @@
 import { testConnection } from './db';
-import { runMigrations } from './migrations/runMigrations';
+import runMigrations from './migrations/runMigrations';
 
 async function testDbSetup() {
   console.log('Testing database connection...');

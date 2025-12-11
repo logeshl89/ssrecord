@@ -164,19 +164,46 @@ export default function EntriesPage() {
     const salesTransactions = sales;
     const purchaseTransactions = purchases;
     
-    const totalSales = salesTransactions.reduce((sum, t) => sum + (t.amountWithGST || 0), 0);
-    const totalPurchases = purchaseTransactions.reduce((sum, t) => sum + (t.amountWithGST || 0), 0);
+    // Safely calculate totals with fallback to 0 and NaN checks
+    const totalSales = salesTransactions.reduce((sum, t) => {
+      const amount = typeof t.amountWithGST === 'number' ? t.amountWithGST : 0;
+      return sum + (isNaN(amount) ? 0 : amount);
+    }, 0);
     
-    const totalBaseSales = salesTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
-    const totalBasePurchases = purchaseTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
+    const totalPurchases = purchaseTransactions.reduce((sum, t) => {
+      const amount = typeof t.amountWithGST === 'number' ? t.amountWithGST : 0;
+      return sum + (isNaN(amount) ? 0 : amount);
+    }, 0);
+    
+    const totalBaseSales = salesTransactions.reduce((sum, t) => {
+      const amount = typeof t.amount === 'number' ? t.amount : 0;
+      return sum + (isNaN(amount) ? 0 : amount);
+    }, 0);
+    
+    const totalBasePurchases = purchaseTransactions.reduce((sum, t) => {
+      const amount = typeof t.amount === 'number' ? t.amount : 0;
+      return sum + (isNaN(amount) ? 0 : amount);
+    }, 0);
     
     const totalGstSales = totalSales - totalBaseSales;
     const totalGstPurchases = totalPurchases - totalBasePurchases;
 
-    const netProfit = totalBaseSales - totalBasePurchases;
-    const netGst = totalGstSales - totalGstPurchases;
+    const netProfit = !isNaN(totalBaseSales) && !isNaN(totalBasePurchases) 
+      ? totalBaseSales - totalBasePurchases 
+      : 0;
+      
+    const netGst = !isNaN(totalGstSales) && !isNaN(totalGstPurchases)
+      ? totalGstSales - totalGstPurchases
+      : 0;
 
-    return { totalSales, totalPurchases, netProfit, netGst, totalGstSales, totalGstPurchases };
+    return { 
+      totalSales: isNaN(totalSales) ? 0 : totalSales,
+      totalPurchases: isNaN(totalPurchases) ? 0 : totalPurchases,
+      netProfit: isNaN(netProfit) ? 0 : netProfit,
+      netGst: isNaN(netGst) ? 0 : netGst,
+      totalGstSales: isNaN(totalGstSales) ? 0 : totalGstSales,
+      totalGstPurchases: isNaN(totalGstPurchases) ? 0 : totalGstPurchases
+    };
   }, [sales, purchases]);
   
   const paginatedData = useMemo(() => {
@@ -214,7 +241,11 @@ export default function EntriesPage() {
     let tableData: Transaction[];
     let summaryData: { title: string; value: string }[];
 
-    const formatCurrency = (value: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(value);
+    const formatCurrency = (value: number) => {
+      // Handle NaN and invalid values
+      const safeValue = typeof value === 'number' && !isNaN(value) ? value : 0;
+      return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(safeValue);
+    };
 
 
     switch (activeTab) {
@@ -243,15 +274,15 @@ export default function EntriesPage() {
     }
     
     const body = tableData.map(t => {
-      const baseAmount = (t.amountWithGST || 0) / 1.18;
-      const gstAmount = (t.amountWithGST || 0) - baseAmount;
+      const baseAmount = (typeof t.amountWithGST === 'number' && !isNaN(t.amountWithGST) ? t.amountWithGST : 0) / 1.18;
+      const gstAmount = (typeof t.amountWithGST === 'number' && !isNaN(t.amountWithGST) ? t.amountWithGST : 0) - baseAmount;
       return [
         t.billDate || '',
         t.billNumber || '',
         t.party || '',
         baseAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 }),
         gstAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 }),
-        (t.amountWithGST || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 }),
+        (typeof t.amountWithGST === 'number' && !isNaN(t.amountWithGST) ? t.amountWithGST : 0).toLocaleString('en-IN', { minimumFractionDigits: 2 }),
       ];
     });
 
@@ -399,7 +430,7 @@ export default function EntriesPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(totals.totalSales)}
+              {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(typeof totals.totalSales === 'number' && !isNaN(totals.totalSales) ? totals.totalSales : 0)}
             </div>
              <p className="text-xs text-muted-foreground">
               Across {sales.length} transactions
@@ -413,7 +444,7 @@ export default function EntriesPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(totals.totalPurchases)}
+              {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(typeof totals.totalPurchases === 'number' && !isNaN(totals.totalPurchases) ? totals.totalPurchases : 0)}
             </div>
             <p className="text-xs text-muted-foreground">
               Across {purchases.length} transactions
@@ -427,7 +458,7 @@ export default function EntriesPage() {
           </CardHeader>
           <CardContent>
             <div className={`text-2xl font-bold ${totals.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-              {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(totals.netProfit)}
+              {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(typeof totals.netProfit === 'number' && !isNaN(totals.netProfit) ? totals.netProfit : 0)}
             </div>
             <p className="text-xs text-muted-foreground">
               Base Sales - Base Purchases
@@ -441,7 +472,7 @@ export default function EntriesPage() {
           </CardHeader>
           <CardContent>
              <div className={`text-2xl font-bold ${totals.netGst >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-              {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(totals.netGst)}
+              {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(typeof totals.netGst === 'number' && !isNaN(totals.netGst) ? totals.netGst : 0)}
             </div>
             <p className="text-xs text-muted-foreground">
               Sales GST - Purchase GST
