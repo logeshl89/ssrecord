@@ -38,15 +38,14 @@ const formSchema = z.object({
     required_error: "A date for the transaction is required.",
   }),
   billDate: z.string().min(1, { message: "Bill date is required." }),
-  billNumber: z.string(),
-  month: z.string(),
+  // Note: billNumber and month are auto-generated, so they're not in the form
 });
 
 interface AddTransactionFormProps {
   isOpen: boolean;
   setIsOpen: (open: boolean) => void;
   type: 'Sale' | 'Purchase';
-  onSubmit: (data: Omit<Transaction, 'id' | 'amount'> & { id?: string }) => void;
+  onSubmit: (data: Omit<Transaction, 'id' | 'amount' | 'billNumber' | 'month'> & { id?: string; amountWithGST: number }) => void;
   transaction: Transaction | null;
 }
 
@@ -56,26 +55,23 @@ export function AddTransactionForm({ isOpen, setIsOpen, type, onSubmit, transact
     defaultValues: {
       party: '',
       items: '',
+      amountWithGST: 0,
       date: new Date(),
       billDate: format(new Date(), "dd/MM/yyyy"),
-      billNumber: '',
-      month: format(new Date(), "MMM-yyyy"),
     },
   });
-  
-  const generateBillNumber = (transactionType: 'Sale' | 'Purchase') => {
-    const prefix = transactionType === 'Sale' ? 'INV' : 'P';
-    const timestamp = Date.now();
-    return `${prefix}-${String(timestamp).slice(-6)}`;
-  };
 
   useEffect(() => {
     if (isOpen) {
       if (transaction) {
+        // Convert amount back to amountWithGST for the form
+        const amountWithGST = transaction.amount * 1.18;
         form.reset({
-          ...transaction,
+          party: transaction.party,
+          items: transaction.items,
+          amountWithGST: amountWithGST,
           date: new Date(transaction.date),
-          month: format(new Date(transaction.date), "MMM-yyyy"),
+          billDate: transaction.billDate,
         });
       } else {
         const today = new Date();
@@ -85,8 +81,6 @@ export function AddTransactionForm({ isOpen, setIsOpen, type, onSubmit, transact
           amountWithGST: 0,
           date: today,
           billDate: format(today, "dd/MM/yyyy"),
-          billNumber: generateBillNumber(type),
-          month: format(today, "MMM-yyyy"),
         });
       }
     }
@@ -95,14 +89,12 @@ export function AddTransactionForm({ isOpen, setIsOpen, type, onSubmit, transact
   const selectedDate = form.watch('date');
   useEffect(() => {
       if (selectedDate) {
-          form.setValue('month', format(selectedDate, 'MMM-yyyy'));
           form.setValue('billDate', format(selectedDate, 'dd/MM/yyyy'));
       }
   }, [selectedDate, form]);
 
   function handleFormSubmit(values: z.infer<typeof formSchema>) {
-    const amount = values.amountWithGST / 1.18;
-    onSubmit({ ...values, type, id: transaction?.id, amount });
+    onSubmit({ ...values, type, id: transaction?.id });
     setIsOpen(false);
   }
 
@@ -163,22 +155,6 @@ export function AddTransactionForm({ isOpen, setIsOpen, type, onSubmit, transact
                     <FormLabel>Bill Date</FormLabel>
                     <FormControl>
                       <Input placeholder="Example: 10/12/2025" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <div className="grid grid-cols-1 gap-4">
-              <FormField
-                control={form.control}
-                name="billNumber"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Bill Number</FormLabel>
-                    <FormControl>
-                      <Input {...field} readOnly className="bg-muted"/>
                     </FormControl>
                     <FormMessage />
                   </FormItem>

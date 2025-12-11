@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label"
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
-import { useState } from "react";
+import { useState } from "react"
 
 export default function LoginPage() {
   const router = useRouter();
@@ -29,13 +29,18 @@ export default function LoginPage() {
     const email = formData.get('email') as string;
     const password = formData.get('password') as string;
     
-    // Mock validation - in a real app, this would be an API call
     try {
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
       
-      // Mock validation logic
-      if (email === "admin@ssengineering.com" && password === "password") {
+      const data = await response.json();
+      
+      if (response.ok) {
         toast({
           title: "Login Successful",
           description: "Welcome back! Redirecting to dashboard...",
@@ -48,7 +53,7 @@ export default function LoginPage() {
       } else {
         toast({
           title: "Login Failed",
-          description: "Invalid email or password. Please try again.",
+          description: data.error || "Invalid email or password. Please try again.",
           variant: "destructive",
         });
       }

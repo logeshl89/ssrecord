@@ -1,7 +1,6 @@
 "use client";
 
 import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip } from "recharts";
-import type { Transaction } from "@/lib/types";
 import { useMemo } from "react";
 import {
   ChartContainer,
@@ -10,8 +9,14 @@ import {
 } from "@/components/ui/chart";
 import { format } from "date-fns";
 
+interface MonthlyData {
+  month: string;
+  sales: number;
+  purchases: number;
+}
+
 interface OverviewChartProps {
-  data: Transaction[];
+  data: MonthlyData[];
 }
 
 const chartConfig = {
@@ -26,35 +31,19 @@ const chartConfig = {
 } satisfies ChartConfig;
 
 export function OverviewChart({ data }: OverviewChartProps) {
-  const monthlyData = useMemo(() => {
-    const months: { [key: string]: { sales: number; purchases: number } } = {};
-    
-    data.forEach((transaction) => {
-      const month = format(new Date(transaction.date), "MMM");
-      if (!months[month]) {
-        months[month] = { sales: 0, purchases: 0 };
-      }
-      if (transaction.type === "Sale") {
-        months[month].sales += transaction.amountWithGST;
-      } else {
-        months[month].purchases += transaction.amountWithGST;
-      }
-    });
-
-    const monthOrder = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-    return monthOrder.map((month) => ({
-      name: month,
-      sales: months[month]?.sales || 0,
-      purchases: months[month]?.purchases || 0,
-    })).filter(d => d.sales > 0 || d.purchases > 0);
-
+  const chartData = useMemo(() => {
+    // Process the monthly data directly
+    return data.map(item => ({
+      name: item.month,
+      sales: parseFloat(item.sales) || 0,
+      purchases: parseFloat(item.purchases) || 0,
+    }));
   }, [data]);
 
   return (
     <ChartContainer config={chartConfig} className="min-h-[200px] w-full">
       <ResponsiveContainer width="100%" height={350}>
-        <BarChart data={monthlyData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+        <BarChart data={chartData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
           <XAxis
             dataKey="name"
             stroke="hsl(var(--foreground))"

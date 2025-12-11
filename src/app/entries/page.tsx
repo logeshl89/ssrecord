@@ -1,10 +1,9 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { PlusCircle, FileDown, Package, IndianRupee, ArrowLeftRight, Percent } from 'lucide-react';
-import { mockTransactions } from '@/lib/data';
 import type { Transaction } from '@/lib/types';
 import { TransactionsTable } from '@/components/entries/transactions-table';
 import { AddTransactionForm } from '@/components/entries/add-transaction-form';
@@ -13,6 +12,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
+import { useToast } from '@/hooks/use-toast';
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
@@ -20,9 +20,8 @@ interface jsPDFWithAutoTable extends jsPDF {
 
 
 export default function EntriesPage() {
-  const [transactions, setTransactions] = useState<Transaction[]>(() =>
-    [...mockTransactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-  );
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [loading, setLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [formType, setFormType] = useState<'Sale' | 'Purchase'>('Sale');
   const [activeTab, setActiveTab] = useState<'all' | 'sales' | 'purchases'>('all');
@@ -32,27 +31,116 @@ export default function EntriesPage() {
 
   const [currentPage, setCurrentPage] = useState(1);
   const recordsPerPage = 5;
+  const { toast } = useToast();
 
-  const handleAddOrUpdateTransaction = (transactionData: Omit<Transaction, 'id' | 'amount'> & { id?: string; amountWithGST: number }) => {
-    const baseAmount = transactionData.amountWithGST / 1.18;
-    const newTransaction = { ...transactionData, amount: baseAmount };
+  // Fetch transactions from database
+  useEffect(() => {
+    const fetchTransactions = async () => {
+      try {
+        const response = await fetch('/api/transactions');
+        const data = await response.json();
+        
+        if (response.ok) {
+          setTransactions(data.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+        } else {
+          throw new Error(data.error || 'Failed to load transactions');
+        }
+      } catch (error) {
+        console.error('Failed to fetch transactions:', error);
+        toast({
+          title: "Error",
+          description: "Failed to load transactions. Please try again.",
+          variant: "destructive",
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
 
-    if (newTransaction.id) {
-      // Update existing transaction
-      setTransactions(prev =>
-        prev.map(t =>
-          t.id === newTransaction.id ? { ...t, ...newTransaction } as Transaction : t
-        ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-      );
-    } else {
-      // Add new transaction
-      setTransactions(prev => [
-        { ...newTransaction, id: String(Date.now()) } as Transaction,
-        ...prev
-      ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+    fetchTransactions();
+  }, [toast]);
+
+  const handleAddOrUpdateTransaction = async (transactionData: Omit<Transaction, 'id' | 'amount'> & { id?: string; amountWithGST: number }) => {
+    try {
+      const baseAmount = transactionData.amountWithGST / 1.18;
+      const newTransaction = { ...transactionData, amount: baseAmount };
+
+      let response;
+      if (newTransaction.id) {
+        // Update existing transaction
+        response = await fetch(`/api/transactions/${newTransaction.id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            type: newTransaction.type,
+            date: newTransaction.date,
+            party: newTransaction.party,
+            items: newTransaction.items,
+            amount: baseAmount,
+            billDate: newTransaction.billDate
+          }),
+        });
+      } else {
+        // Add new transaction
+        response = await fetch('/api/transactions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            type: newTransaction.type,
+            date: newTransaction.date,
+            party: newTransaction.party,
+            items: newTransaction.items,
+            amount: baseAmount,
+            billDate: newTransaction.billDate
+          }),
+        });
+      }
+
+      const data = await response.json();
+      
+      if (response.ok) {
+        if (newTransaction.id) {
+          // Update existing transaction in state
+          setTransactions(prev =>
+            prev.map(t =>
+              t.id === newTransaction.id ? data : t
+            ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+          );
+          
+          toast({
+            title: "Success",
+            description: "Transaction updated successfully.",
+          });
+        } else {
+          // Add new transaction to state
+          setTransactions(prev => [
+            data,
+            ...prev
+          ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+          
+          toast({
+            title: "Success",
+            description: "Transaction added successfully.",
+          });
+        }
+      } else {
+        throw new Error(data.error || 'Failed to save transaction');
+      }
+      
+      setEditingTransaction(null);
+      setCurrentPage(1); // Reset to first page after adding/updating
+    } catch (error) {
+      console.error('Failed to save transaction:', error);
+      toast({
+        title: "Error",
+        description: "Failed to save transaction. Please try again.",
+        variant: "destructive",
+      });
     }
-    setEditingTransaction(null);
-    setCurrentPage(1); // Reset to first page after adding/updating
   };
 
   const handleEdit = (transaction: Transaction) => {
@@ -61,10 +149,34 @@ export default function EntriesPage() {
     setIsFormOpen(true);
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (deletingTransactionId) {
-      setTransactions(prev => prev.filter(t => t.id !== deletingTransactionId));
-      setDeletingTransactionId(null);
+      try {
+        const response = await fetch(`/api/transactions/${deletingTransactionId}`, {
+          method: 'DELETE',
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+          setTransactions(prev => prev.filter(t => t.id !== deletingTransactionId));
+          toast({
+            title: "Success",
+            description: "Transaction deleted successfully.",
+          });
+        } else {
+          throw new Error(data.error || 'Failed to delete transaction');
+        }
+      } catch (error) {
+        console.error('Failed to delete transaction:', error);
+        toast({
+          title: "Error",
+          description: "Failed to delete transaction. Please try again.",
+          variant: "destructive",
+        });
+      } finally {
+        setDeletingTransactionId(null);
+      }
     }
   };
 
@@ -119,7 +231,6 @@ export default function EntriesPage() {
     }
     return Math.ceil(data.length / recordsPerPage);
   }, [transactions, sales, purchases, activeTab]);
-
 
   const exportPDF = async () => {
     const doc = new jsPDF() as jsPDFWithAutoTable;
@@ -270,6 +381,14 @@ export default function EntriesPage() {
 
     doc.save(fileName);
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-xl">Loading transactions...</div>
+      </div>
+    );
+  }
 
 
   return (

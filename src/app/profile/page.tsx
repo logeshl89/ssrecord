@@ -1,6 +1,5 @@
-'use client';
+'use client'
 
-import { useState } from "react";
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -11,80 +10,108 @@ import {
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { useToast } from "@/hooks/use-toast";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Terminal } from "lucide-react";
+import { useRouter } from "next/navigation"
+import { useToast } from "@/hooks/use-toast"
+import { useState } from "react"
 
 export default function ProfilePage() {
-    const { toast } = useToast();
-    const [currentPassword, setCurrentPassword] = useState('');
-    const [newPassword, setNewPassword] = useState('');
-    const [confirmPassword, setConfirmPassword] = useState('');
-    const [error, setError] = useState<string | null>(null);
+  const router = useRouter()
+  const { toast } = useToast()
+  const [isLoading, setIsLoading] = useState(false)
 
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        setError(null);
-
-        if (newPassword !== confirmPassword) {
-            setError("New passwords do not match.");
-            return;
-        }
-
-        if (newPassword.length < 6) {
-            setError("Password must be at least 6 characters long.");
-            return;
-        }
-
-        // Mock password update logic
-        console.log("Updating password (mock)...");
-
+  const handleLogout = async () => {
+    setIsLoading(true)
+    try {
+      const response = await fetch('/api/auth/logout', {
+        method: 'POST',
+      })
+      
+      if (response.ok) {
         toast({
-            title: "Profile Updated",
-            description: "Your password has been updated successfully.",
-        });
-
-        // Reset fields
-        setCurrentPassword('');
-        setNewPassword('');
-        setConfirmPassword('');
+          title: "Logout Successful",
+          description: "You have been logged out successfully.",
+        })
+        
+        // Redirect to login page
+        setTimeout(() => {
+          router.push('/login')
+        }, 1500)
+      } else {
+        toast({
+          title: "Logout Failed",
+          description: "Failed to logout. Please try again.",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      toast({
+        title: "Logout Error",
+        description: "An unexpected error occurred. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
     }
+  }
 
   return (
-    <div className="space-y-8 p-4 sm:p-6 lg:p-8">
-        <h2 className="text-3xl font-bold tracking-tight">User Profile</h2>
-        <Card>
-            <CardHeader>
-                <CardTitle>Update Password</CardTitle>
-                <CardDescription>Enter your new password below. For now, this is just a demonstration.</CardDescription>
-            </CardHeader>
-            <CardContent>
-                <form onSubmit={handleSubmit} className="space-y-4 max-w-md">
-                    {error && (
-                        <Alert variant="destructive">
-                            <Terminal className="h-4 w-4" />
-                            <AlertTitle>Error</AlertTitle>
-                            <AlertDescription>
-                                {error}
-                            </AlertDescription>
-                        </Alert>
-                    )}
-                    <div className="grid gap-2">
-                        <Label htmlFor="current-password">Current Password</Label>
-                        <Input id="current-password" type="password" required value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
-                    </div>
-                    <div className="grid gap-2">
-                        <Label htmlFor="new-password">New Password</Label>
-                        <Input id="new-password" type="password" required value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
-                    </div>
-                    <div className="grid gap-2">
-                        <Label htmlFor="confirm-password">Confirm New Password</Label>
-                        <Input id="confirm-password" type="password" required value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
-                    </div>
-                    <Button type="submit">Update Password</Button>
-                </form>
-            </CardContent>
-        </Card>
+    <div className="space-y-6 p-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-medium">Profile</h3>
+          <p className="text-sm text-muted-foreground">
+            Manage your account settings
+          </p>
+        </div>
+        <Button onClick={handleLogout} disabled={isLoading}>
+          {isLoading ? "Logging out..." : "Logout"}
+        </Button>
+      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>User Information</CardTitle>
+          <CardDescription>
+            Update your personal information
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Name</Label>
+              <Input id="name" defaultValue="Admin User" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input id="email" type="email" defaultValue="admin@ssengineering.com" />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="company">Company</Label>
+            <Input id="company" defaultValue="SS Engineering" />
+          </div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>Change Password</CardTitle>
+          <CardDescription>
+            Update your password regularly to keep your account secure
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="current-password">Current Password</Label>
+              <Input id="current-password" type="password" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-password">New Password</Label>
+              <Input id="new-password" type="password" />
+            </div>
+          </div>
+          <Button>Update Password</Button>
+        </CardContent>
+      </Card>
     </div>
   )
 }

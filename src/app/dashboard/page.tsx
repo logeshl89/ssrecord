@@ -1,30 +1,55 @@
+'use client';
+
 import { BarChart, CreditCard, DollarSign, Package } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { OverviewChart } from "@/components/dashboard/overview-chart";
-import { mockTransactions } from "@/lib/data";
+import { useEffect, useState } from "react";
 
 export default function DashboardPage() {
-  const totalRevenue = mockTransactions
-    .filter((t) => t.type === "Sale")
-    .reduce((sum, t) => sum + t.amountWithGST, 0);
-
-  const totalPurchases = mockTransactions
-    .filter((t) => t.type === "Purchase")
-    .reduce((sum, t) => sum + t.amountWithGST, 0);
+  const [stats, setStats] = useState({
+    totalRevenue: 0,
+    totalPurchases: 0,
+    totalSales: 0,
+    totalPurchaseEntries: 0,
+    profit: 0,
+    totalTransactions: 0
+  });
   
-  const totalSales = mockTransactions.filter((t) => t.type === "Sale").length;
-  
-  const totalPurchaseEntries = mockTransactions.filter((t) => t.type === "Purchase").length;
+  const [monthlyData, setMonthlyData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const baseRevenue = mockTransactions
-    .filter((t) => t.type === "Sale")
-    .reduce((sum, t) => sum + t.amount, 0);
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const response = await fetch('/api/dashboard');
+        const data = await response.json();
+        
+        if (response.ok) {
+          setStats({
+            ...data.stats,
+            totalTransactions: data.stats.totalSales + data.stats.totalPurchaseEntries
+          });
+          setMonthlyData(data.monthlyData);
+        } else {
+          throw new Error(data.error || 'Failed to fetch dashboard data');
+        }
+      } catch (error) {
+        console.error("Failed to fetch dashboard data:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  const basePurchases = mockTransactions
-    .filter((t) => t.type === "Purchase")
-    .reduce((sum, t) => sum + t.amount, 0);
+    fetchData();
+  }, []);
 
-  const profit = baseRevenue - basePurchases;
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-xl">Loading dashboard data...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8 p-4 sm:p-6 lg:p-8">
@@ -39,10 +64,10 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              ₹{totalRevenue.toLocaleString('en-IN')}
+              ₹{stats.totalRevenue.toLocaleString('en-IN')}
             </div>
             <p className="text-xs text-muted-foreground">
-              from {totalSales} sales
+              from {stats.totalSales} sales
             </p>
           </CardContent>
         </Card>
@@ -53,10 +78,10 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              ₹{totalPurchases.toLocaleString('en-IN')}
+              ₹{stats.totalPurchases.toLocaleString('en-IN')}
             </div>
             <p className="text-xs text-muted-foreground">
-              from {totalPurchaseEntries} purchases
+              from {stats.totalPurchaseEntries} purchases
             </p>
           </CardContent>
         </Card>
@@ -67,7 +92,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              ₹{profit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              ₹{stats.profit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
             <p className="text-xs text-muted-foreground">
               Based on base amounts
@@ -81,7 +106,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {mockTransactions.length}
+              {stats.totalTransactions}
             </div>
             <p className="text-xs text-muted-foreground">
               All sales and purchases
@@ -95,7 +120,7 @@ export default function DashboardPage() {
           <CardTitle>Monthly Overview</CardTitle>
         </CardHeader>
         <CardContent className="pl-2">
-          <OverviewChart data={mockTransactions} />
+          <OverviewChart data={monthlyData} />
         </CardContent>
       </Card>
     </div>
