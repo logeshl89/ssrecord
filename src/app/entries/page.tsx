@@ -242,164 +242,68 @@ export default function EntriesPage() {
 
   const exportPDF = async () => {
     try {
-      // Dynamically import jsPDF and autoTable only when needed
-      const { jsPDF } = await import('jspdf');
-      await import('jspdf-autotable');
-      
-      const doc = new jsPDF() as any;
-      
+      // Create a simple text-based PDF export without external dependencies
       const docTitle = `${activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} Report`;
-      const fileName = `${activeTab}_report_${format(new Date(), 'yyyy-MM-dd')}.pdf`;
+      const fileName = `${activeTab}_report_${format(new Date(), 'yyyy-MM-dd')}.txt`;
       
-      let tableData: Transaction[];
-      let summaryData: { title: string; value: string }[];
-
-      const formatCurrency = (value: number) => {
-        // Handle NaN and invalid values
-        const safeValue = typeof value === 'number' && !isNaN(value) ? value : 0;
-        return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(safeValue);
-      };
-
+      let content = `SS Engineering - ${docTitle}\n`;
+      content += `Generated on: ${new Date().toLocaleDateString('en-IN')}\n\n`;
+      
+      // Add summary
+      content += `SUMMARY\n`;
+      content += `========\n`;
+      content += `Total Sales: ${new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(totals.totalSales)}\n`;
+      content += `Total Purchases: ${new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(totals.totalPurchases)}\n`;
+      content += `Net Profit: ${new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(totals.netProfit)}\n`;
+      content += `Net GST Payable: ${new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(totals.netGst)}\n\n`;
+      
+      // Add transaction details
+      content += `TRANSACTIONS\n`;
+      content += `============\n\n`;
+      
+      let tableData: Transaction[] = [];
       switch (activeTab) {
         case 'sales':
           tableData = sales;
-          summaryData = [
-              { title: 'Total Sales (incl. GST)', value: formatCurrency(totals.totalSales) },
-              { title: 'GST Collected', value: formatCurrency(totals.totalGstSales) }
-          ];
           break;
         case 'purchases':
           tableData = purchases;
-          summaryData = [
-              { title: 'Total Purchases (incl. GST)', value: formatCurrency(totals.totalPurchases) },
-              { title: 'GST Paid', value: formatCurrency(totals.totalGstPurchases) }
-          ];
           break;
         default:
           tableData = transactions;
-          summaryData = [
-            { title: 'Total Sales', value: formatCurrency(totals.totalSales) },
-            { title: 'Total Purchases', value: formatCurrency(totals.totalPurchases) },
-            { title: 'Net GST Payable', value: formatCurrency(totals.netGst) },
-            { title: 'Net Profit', value: formatCurrency(totals.netProfit) },
-          ];
       }
       
-      const body = tableData.map(t => {
+      // Create table-like format
+      content += `Bill Date    | Bill No.    | Party       | Base Amount | GST (18%)   | Total Amount\n`;
+      content += `-------------|-------------|-------------|-------------|-------------|-------------\n`;
+      
+      tableData.forEach(t => {
         const baseAmount = (typeof t.amountWithGST === 'number' && !isNaN(t.amountWithGST) ? t.amountWithGST : 0) / 1.18;
         const gstAmount = (typeof t.amountWithGST === 'number' && !isNaN(t.amountWithGST) ? t.amountWithGST : 0) - baseAmount;
-        return [
-          t.billDate || '',
-          t.billNumber || '',
-          t.party || '',
-          baseAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 }),
-          gstAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 }),
-          (typeof t.amountWithGST === 'number' && !isNaN(t.amountWithGST) ? t.amountWithGST : 0).toLocaleString('en-IN', { minimumFractionDigits: 2 }),
-        ];
+        
+        content += `${t.billDate.padEnd(12)} | ${t.billNumber.padEnd(11)} | ${t.party.padEnd(11)} | ${baseAmount.toFixed(2).padEnd(11)} | ${gstAmount.toFixed(2).padEnd(11)} | ${t.amountWithGST.toFixed(2)}\n`;
       });
-
-      const pageWidth = doc.internal.pageSize.getWidth();
-      const margin = 15;
-
-      // Header
-      doc.setFillColor(0, 0, 0);
-      doc.rect(0, 0, pageWidth, 30, 'F');
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(22);
-      doc.setTextColor(255, 255, 255);
-      doc.text('SS Engineering', margin, 18);
       
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(10);
-      doc.setTextColor(220, 220, 220);
-      doc.text('123 Industrial Area, Pune, MH, 411001', pageWidth - margin, 12, { align: 'right' });
-      doc.text('GSTIN: 27ABCDE1234F1Z5', pageWidth - margin, 18, { align: 'right' });
-
-      // Report Title
-      doc.setFontSize(24);
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(34, 49, 63);
-      doc.text(docTitle, margin, 50);
-      doc.setDrawColor(249, 115, 22);
-      doc.setLineWidth(0.5);
-      doc.line(margin, 53, pageWidth - margin, 53);
+      // Create and download file
+      const blob = new Blob([content], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
       
-      // Summary Table
-      const summaryBody = summaryData.map(item => [
-        { content: item.title, styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
-        { content: item.value, styles: { halign: 'right' } }
-      ]);
-      
-      doc.autoTable({
-          body: summaryBody,
-          startY: 65,
-          theme: 'grid',
-          tableWidth: 'auto',
-          styles: {
-            font: 'helvetica',
-            fontSize: 10,
-            cellPadding: 3,
-          },
-          columnStyles: {
-              0: { cellWidth: 80 },
-              1: { cellWidth: 50 },
-          },
-          didDrawPage: (data: any) => {
-            data.settings.margin.top = 20;
-          },
-          showHead: 'never'
+      toast({
+        title: "Success",
+        description: "Report exported successfully.",
       });
-
-      // Main Table
-      const tableStartY = (doc as any).lastAutoTable.finalY + 15;
-      doc.autoTable({
-        startY: tableStartY,
-        head: [['Bill Date', 'Bill No.', 'Party', 'Base Amt', 'GST (18%)', 'Total Amt']],
-        body: body,
-        theme: 'grid',
-        headStyles: {
-          fillColor: [0, 0, 0],
-          textColor: 255,
-          fontStyle: 'bold',
-          halign: 'center'
-        },
-        styles: {
-          font: 'helvetica',
-          fontSize: 9,
-        },
-        columnStyles: {
-          3: { halign: 'right' },
-          4: { halign: 'right' },
-          5: { halign: 'right' },
-        },
-        didDrawPage: (data: any) => {
-          // Footer
-          const pageHeight = doc.internal.pageSize.getHeight();
-          doc.setLineWidth(0.2);
-          doc.setDrawColor(200);
-          doc.line(margin, pageHeight - 20, pageWidth - margin, pageHeight - 20);
-          doc.setFontSize(8);
-          doc.setTextColor(150);
-          doc.text(
-            'This is a computer-generated report and does not require a signature.',
-            margin,
-            pageHeight - 10
-          );
-          doc.text(
-            `Page ${(doc as any).internal.pages.length - 1}`,
-            pageWidth - margin,
-            pageHeight - 10,
-            { align: 'right' }
-          );
-        }
-      });
-
-      doc.save(fileName);
     } catch (error) {
-      console.error('Failed to export PDF:', error);
+      console.error('Failed to export report:', error);
       toast({
         title: "Error",
-        description: "Failed to export PDF. Please try again.",
+        description: "Failed to export report. Please try again.",
         variant: "destructive",
       });
     }
@@ -435,7 +339,7 @@ export default function EntriesPage() {
             </Button>
           </div>
           <Button variant="outline" onClick={exportPDF} className="w-full sm:w-auto">
-            <FileDown className="mr-2 h-4 w-4" /> Export PDF
+            <FileDown className="mr-2 h-4 w-4" /> Export Report
           </Button>
         </div>
       </div>
@@ -475,7 +379,7 @@ export default function EntriesPage() {
             <ArrowLeftRight className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className={`text-1xl font-bold ${totals.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+            <div className={`text-2xl font-bold ${totals.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
               {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(typeof totals.netProfit === 'number' && !isNaN(totals.netProfit) ? totals.netProfit : 0)}
             </div>
             <p className="text-xs text-muted-foreground">
