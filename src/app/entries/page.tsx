@@ -13,6 +13,20 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { useAppData } from '@/contexts/app-data-context';
 
+// Type definitions for pdfmake
+declare module 'pdfmake/build/pdfmake' {
+  interface TFontFamilyTypes {
+    Roboto?: string;
+  }
+}
+
+interface PdfMake {
+  vfs: any;
+  createPdf(documentDefinitions: any): {
+    download(filename?: string): void;
+  };
+}
+
 export default function EntriesPage() {
   const { transactions, loading, error, refreshTransactions } = useAppData();
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -242,24 +256,18 @@ export default function EntriesPage() {
 
   const exportPDF = async () => {
     try {
-      // Create a simple text-based PDF export without external dependencies
+      // Dynamically import pdfmake only when needed
+      const pdfMakeModule = await import('pdfmake/build/pdfmake');
+      const vfsModule = await import('pdfmake/build/vfs_fonts');
+      
+      const pdfMake: PdfMake = pdfMakeModule.default || pdfMakeModule;
+      const vfsFonts = vfsModule.default || vfsModule;
+      
+      // Set the virtual file system for fonts
+      pdfMake.vfs = vfsFonts.pdfMake ? vfsFonts.pdfMake.vfs : vfsFonts.vfs;
+      
       const docTitle = `${activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} Report`;
-      const fileName = `${activeTab}_report_${format(new Date(), 'yyyy-MM-dd')}.txt`;
-      
-      let content = `SS Engineering - ${docTitle}\n`;
-      content += `Generated on: ${new Date().toLocaleDateString('en-IN')}\n\n`;
-      
-      // Add summary
-      content += `SUMMARY\n`;
-      content += `========\n`;
-      content += `Total Sales: ${new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(totals.totalSales)}\n`;
-      content += `Total Purchases: ${new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(totals.totalPurchases)}\n`;
-      content += `Net Profit: ${new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(totals.netProfit)}\n`;
-      content += `Net GST Payable: ${new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(totals.netGst)}\n\n`;
-      
-      // Add transaction details
-      content += `TRANSACTIONS\n`;
-      content += `============\n\n`;
+      const fileName = `${activeTab}_report_${format(new Date(), 'yyyy-MM-dd')}.pdf`;
       
       let tableData: Transaction[] = [];
       switch (activeTab) {
@@ -273,37 +281,296 @@ export default function EntriesPage() {
           tableData = transactions;
       }
       
-      // Create table-like format
-      content += `Bill Date    | Bill No.    | Party       | Base Amount | GST (18%)   | Total Amount\n`;
-      content += `-------------|-------------|-------------|-------------|-------------|-------------\n`;
+      // Prepare table body with alternating row colors
+      const tableBody = [
+        [
+          { text: 'Bill Date', style: 'tableHeader' },
+          { text: 'Bill No.', style: 'tableHeader' },
+          { text: 'Party', style: 'tableHeader' },
+          { text: 'Base Amount', style: 'tableHeader' },
+          { text: 'GST (18%)', style: 'tableHeader' },
+          { text: 'Total Amount', style: 'tableHeader' }
+        ],
+        ...tableData.map((t, index) => {
+          const baseAmount = (typeof t.amountWithGST === 'number' && !isNaN(t.amountWithGST) ? t.amountWithGST : 0) / 1.18;
+          const gstAmount = (typeof t.amountWithGST === 'number' && !isNaN(t.amountWithGST) ? t.amountWithGST : 0) - baseAmount;
+          
+          // Alternate row colors
+          const rowStyle = index % 2 === 0 ? 'tableRowEven' : 'tableRowOdd';
+          
+          return [
+            { text: t.billDate || '', style: rowStyle },
+            { text: t.billNumber || '', style: rowStyle },
+            { text: t.party || '', style: rowStyle },
+            { text: `₹${baseAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, style: rowStyle, alignment: 'right' },
+            { text: `₹${gstAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, style: rowStyle, alignment: 'right' },
+            { text: `₹${(t.amountWithGST || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`, style: rowStyle, alignment: 'right' }
+          ];
+        })
+      ];
       
-      tableData.forEach(t => {
-        const baseAmount = (typeof t.amountWithGST === 'number' && !isNaN(t.amountWithGST) ? t.amountWithGST : 0) / 1.18;
-        const gstAmount = (typeof t.amountWithGST === 'number' && !isNaN(t.amountWithGST) ? t.amountWithGST : 0) - baseAmount;
-        
-        content += `${t.billDate.padEnd(12)} | ${t.billNumber.padEnd(11)} | ${t.party.padEnd(11)} | ${baseAmount.toFixed(2).padEnd(11)} | ${gstAmount.toFixed(2).padEnd(11)} | ${t.amountWithGST.toFixed(2)}\n`;
-      });
+      // Define the document structure
+      const docDefinition: any = {
+        pageSize: 'A4',
+        pageMargins: [40, 120, 40, 60],
+        background: [
+          {
+            canvas: [
+              {
+                type: 'rect',
+                x: 0,
+                y: 0,
+                w: 595.28,
+                h: 80,
+                color: '#2563eb'
+              }
+            ]
+          }
+        ],
+        header: {
+          columns: [
+            {
+              width: '*',
+              text: ''
+            },
+            {
+              width: 'auto',
+              stack: [
+                {
+                  text: 'SS ENGINEERING',
+                  style: 'companyName'
+                },
+                {
+                  text: 'Industrial Solutions & Services',
+                  style: 'companyTagline'
+                }
+              ],
+              margin: [0, 20, 20, 0]
+            }
+          ]
+        },
+        content: [
+          {
+            text: docTitle,
+            style: 'reportTitle',
+            margin: [0, 0, 0, 20]
+          },
+          {
+            text: `Generated on: ${new Date().toLocaleDateString('en-IN')}`,
+            style: 'reportDate',
+            margin: [0, 0, 0, 30]
+          },
+          {
+            text: 'Financial Summary',
+            style: 'sectionHeader',
+            margin: [0, 10, 0, 15]
+          },
+          {
+            columns: [
+              {
+                width: '*',
+                stack: [
+                  {
+                    text: `Total Sales: `,
+                    style: 'summaryLabel'
+                  },
+                  {
+                    text: `${new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(totals.totalSales)}`,
+                    style: 'summaryValueSales'
+                  }
+                ]
+              },
+              {
+                width: '*',
+                stack: [
+                  {
+                    text: `Total Purchases: `,
+                    style: 'summaryLabel'
+                  },
+                  {
+                    text: `${new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(totals.totalPurchases)}`,
+                    style: 'summaryValuePurchases'
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            columns: [
+              {
+                width: '*',
+                stack: [
+                  {
+                    text: `Net Profit: `,
+                    style: 'summaryLabel'
+                  },
+                  {
+                    text: `${new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(totals.netProfit)}`,
+                    style: totals.netProfit >= 0 ? 'summaryValueProfitPositive' : 'summaryValueProfitNegative'
+                  }
+                ]
+              },
+              {
+                width: '*',
+                stack: [
+                  {
+                    text: `Net GST Payable: `,
+                    style: 'summaryLabel'
+                  },
+                  {
+                    text: `${new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(totals.netGst)}`,
+                    style: totals.netGst >= 0 ? 'summaryValueGSTPositive' : 'summaryValueGSTNegative'
+                  }
+                ]
+              }
+            ],
+            margin: [0, 0, 0, 30]
+          },
+          {
+            text: 'Transaction Details',
+            style: 'sectionHeader',
+            margin: [0, 10, 0, 15]
+          },
+          {
+            table: {
+              headerRows: 1,
+              widths: ['*', '*', '*', '*', '*', '*'],
+              body: tableBody
+            },
+            layout: {
+              hLineWidth: (i: number, node: any) => {
+                return (i === 0 || i === node.table.body.length) ? 2 : 1;
+              },
+              vLineWidth: () => {
+                return 1;
+              },
+              hLineColor: (i: number, node: any) => {
+                return (i === 0 || i === node.table.body.length) ? '#2563eb' : '#cccccc';
+              },
+              vLineColor: () => {
+                return '#cccccc';
+              },
+              paddingLeft: (i: number, node: any) => {
+                return 8;
+              },
+              paddingRight: (i: number, node: any) => {
+                return 8;
+              },
+              paddingTop: (i: number, node: any) => {
+                return 6;
+              },
+              paddingBottom: (i: number, node: any) => {
+                return 6;
+              }
+            }
+          },
+          {
+            text: `\n\nReport generated by SS Engineering ERP System`,
+            style: 'footer',
+            alignment: 'center'
+          }
+        ],
+        styles: {
+          companyName: {
+            fontSize: 24,
+            bold: true,
+            color: '#ffffff'
+          },
+          companyTagline: {
+            fontSize: 10,
+            color: '#bfdbfe',
+            italics: true
+          },
+          reportTitle: {
+            fontSize: 20,
+            bold: true,
+            color: '#1e40af',
+            alignment: 'center'
+          },
+          reportDate: {
+            fontSize: 12,
+            color: '#64748b',
+            alignment: 'center'
+          },
+          sectionHeader: {
+            fontSize: 16,
+            bold: true,
+            color: '#2563eb',
+            decoration: 'underline'
+          },
+          summaryLabel: {
+            fontSize: 12,
+            color: '#64748b'
+          },
+          summaryValueSales: {
+            fontSize: 16,
+            bold: true,
+            color: '#22c55e'
+          },
+          summaryValuePurchases: {
+            fontSize: 16,
+            bold: true,
+            color: '#ef4444'
+          },
+          summaryValueProfitPositive: {
+            fontSize: 16,
+            bold: true,
+            color: '#22c55e'
+          },
+          summaryValueProfitNegative: {
+            fontSize: 16,
+            bold: true,
+            color: '#ef4444'
+          },
+          summaryValueGSTPositive: {
+            fontSize: 16,
+            bold: true,
+            color: '#22c55e'
+          },
+          summaryValueGSTNegative: {
+            fontSize: 16,
+            bold: true,
+            color: '#ef4444'
+          },
+          tableHeader: {
+            bold: true,
+            fontSize: 12,
+            color: '#ffffff',
+            fillColor: '#2563eb',
+            alignment: 'center'
+          },
+          tableRowEven: {
+            fontSize: 10,
+            color: '#334155'
+          },
+          tableRowOdd: {
+            fontSize: 10,
+            color: '#334155',
+            fillColor: '#f1f5f9'
+          },
+          footer: {
+            fontSize: 10,
+            color: '#94a3b8',
+            italics: true
+          }
+        },
+        defaultStyle: {
+          fontSize: 10
+        }
+      };
       
-      // Create and download file
-      const blob = new Blob([content], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      // Create and download the PDF
+      pdfMake.createPdf(docDefinition).download(fileName);
       
       toast({
         title: "Success",
-        description: "Report exported successfully.",
+        description: "PDF report exported successfully.",
       });
     } catch (error) {
-      console.error('Failed to export report:', error);
+      console.error('Failed to export PDF:', error);
       toast({
         title: "Error",
-        description: "Failed to export report. Please try again.",
+        description: "Failed to export PDF. Please try again.",
         variant: "destructive",
       });
     }
@@ -339,7 +606,7 @@ export default function EntriesPage() {
             </Button>
           </div>
           <Button variant="outline" onClick={exportPDF} className="w-full sm:w-auto">
-            <FileDown className="mr-2 h-4 w-4" /> Export Report
+            <FileDown className="mr-2 h-4 w-4" /> Export PDF
           </Button>
         </div>
       </div>
