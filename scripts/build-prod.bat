@@ -19,10 +19,6 @@ REM Build the application
 echo Building the application...
 npm run build
 
-REM Copy public assets to standalone output
-echo Copying public assets...
-xcopy /E /I public .next\standalone\public
-
 REM Check if build was successful
 if %ERRORLEVEL% EQU 0 (
   echo Build completed successfully!

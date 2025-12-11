@@ -29,10 +29,6 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   // Ensure static files are properly served
   output: 'standalone',
-  // Experimental features for better static asset handling
-  experimental: {
-    outputFileTracing: true,
-  },
 };
 
 export default nextConfig;

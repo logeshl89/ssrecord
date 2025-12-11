@@ -19,10 +19,6 @@ npm run db:init
 echo "Building the application..."
 npm run build
 
-# Copy public assets to standalone output
-echo "Copying public assets..."
-cp -r public .next/standalone/
-
 # Check if build was successful
 if [ $? -eq 0 ]; then
   echo "Build completed successfully!"

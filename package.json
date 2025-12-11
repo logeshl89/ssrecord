@@ -11,7 +11,7 @@
     "db:init": "npx tsx init-db.ts",
     "build:prod": "next build",
     "start:prod": "next start",
-    "optimize": "next build && next export"
+    "optimize": "next build"
   },
   "dependencies": {
     "@hookform/resolvers": "^4.1.3",

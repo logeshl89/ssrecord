@@ -1,6 +1,6 @@
 [build]
   command = "bash scripts/build-prod.sh"
-  publish = ".next/standalone"
+  publish = ".next"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
