@@ -20,7 +20,7 @@ export function UserNav() {
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="relative h-8 w-8 rounded-full">
           <Avatar className="h-8 w-8">
-            <AvatarImage src="https://placehold.co/32x32/F97316/FFFFFF/png?text=A" alt={mockUser.name} />
+            <AvatarImage src="/logo.png" alt={mockUser.name} />
             <AvatarFallback>{mockUser.name.charAt(0)}</AvatarFallback>
           </Avatar>
         </Button>
