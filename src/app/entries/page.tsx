@@ -10,15 +10,8 @@ import { AddTransactionForm } from '@/components/entries/add-transaction-form';
 import { format } from 'date-fns';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
 import { useToast } from '@/hooks/use-toast';
 import { useAppData } from '@/contexts/app-data-context';
-
-interface jsPDFWithAutoTable extends jsPDF {
-  autoTable: (options: any) => jsPDF;
-}
-
 
 export default function EntriesPage() {
   const { transactions, loading, error, refreshTransactions } = useAppData();
@@ -145,7 +138,6 @@ export default function EntriesPage() {
     }
   };
 
-
   const openForm = (type: 'Sale' | 'Purchase') => {
     setFormType(type);
     setEditingTransaction(null);
@@ -164,24 +156,40 @@ export default function EntriesPage() {
     const salesTransactions = sales;
     const purchaseTransactions = purchases;
     
-    // Safely calculate totals with fallback to 0 and NaN checks
+    // Safely calculate totals with proper parsing and NaN checks
     const totalSales = salesTransactions.reduce((sum, t) => {
-      const amount = typeof t.amountWithGST === 'number' ? t.amountWithGST : 0;
+      const amount = typeof t.amountWithGST === 'string' 
+        ? parseFloat(t.amountWithGST) 
+        : typeof t.amountWithGST === 'number' 
+        ? t.amountWithGST 
+        : 0;
       return sum + (isNaN(amount) ? 0 : amount);
     }, 0);
     
     const totalPurchases = purchaseTransactions.reduce((sum, t) => {
-      const amount = typeof t.amountWithGST === 'number' ? t.amountWithGST : 0;
+      const amount = typeof t.amountWithGST === 'string' 
+        ? parseFloat(t.amountWithGST) 
+        : typeof t.amountWithGST === 'number' 
+        ? t.amountWithGST 
+        : 0;
       return sum + (isNaN(amount) ? 0 : amount);
     }, 0);
     
     const totalBaseSales = salesTransactions.reduce((sum, t) => {
-      const amount = typeof t.amount === 'number' ? t.amount : 0;
+      const amount = typeof t.amount === 'string' 
+        ? parseFloat(t.amount) 
+        : typeof t.amount === 'number' 
+        ? t.amount 
+        : 0;
       return sum + (isNaN(amount) ? 0 : amount);
     }, 0);
     
     const totalBasePurchases = purchaseTransactions.reduce((sum, t) => {
-      const amount = typeof t.amount === 'number' ? t.amount : 0;
+      const amount = typeof t.amount === 'string' 
+        ? parseFloat(t.amount) 
+        : typeof t.amount === 'number' 
+        ? t.amount 
+        : 0;
       return sum + (isNaN(amount) ? 0 : amount);
     }, 0);
     
@@ -233,157 +241,168 @@ export default function EntriesPage() {
   }, [transactions, sales, purchases, activeTab]);
 
   const exportPDF = async () => {
-    const doc = new jsPDF() as jsPDFWithAutoTable;
-    
-    const docTitle = `${activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} Report`;
-    const fileName = `${activeTab}_report_${format(new Date(), 'yyyy-MM-dd')}.pdf`;
-    
-    let tableData: Transaction[];
-    let summaryData: { title: string; value: string }[];
+    try {
+      // Dynamically import jsPDF and autoTable only when needed
+      const { jsPDF } = await import('jspdf');
+      await import('jspdf-autotable');
+      
+      const doc = new jsPDF() as any;
+      
+      const docTitle = `${activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} Report`;
+      const fileName = `${activeTab}_report_${format(new Date(), 'yyyy-MM-dd')}.pdf`;
+      
+      let tableData: Transaction[];
+      let summaryData: { title: string; value: string }[];
 
-    const formatCurrency = (value: number) => {
-      // Handle NaN and invalid values
-      const safeValue = typeof value === 'number' && !isNaN(value) ? value : 0;
-      return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(safeValue);
-    };
+      const formatCurrency = (value: number) => {
+        // Handle NaN and invalid values
+        const safeValue = typeof value === 'number' && !isNaN(value) ? value : 0;
+        return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(safeValue);
+      };
 
-
-    switch (activeTab) {
-      case 'sales':
-        tableData = sales;
-        summaryData = [
-            { title: 'Total Sales (incl. GST)', value: formatCurrency(totals.totalSales) },
-            { title: 'GST Collected', value: formatCurrency(totals.totalGstSales) }
+      switch (activeTab) {
+        case 'sales':
+          tableData = sales;
+          summaryData = [
+              { title: 'Total Sales (incl. GST)', value: formatCurrency(totals.totalSales) },
+              { title: 'GST Collected', value: formatCurrency(totals.totalGstSales) }
+          ];
+          break;
+        case 'purchases':
+          tableData = purchases;
+          summaryData = [
+              { title: 'Total Purchases (incl. GST)', value: formatCurrency(totals.totalPurchases) },
+              { title: 'GST Paid', value: formatCurrency(totals.totalGstPurchases) }
+          ];
+          break;
+        default:
+          tableData = transactions;
+          summaryData = [
+            { title: 'Total Sales', value: formatCurrency(totals.totalSales) },
+            { title: 'Total Purchases', value: formatCurrency(totals.totalPurchases) },
+            { title: 'Net GST Payable', value: formatCurrency(totals.netGst) },
+            { title: 'Net Profit', value: formatCurrency(totals.netProfit) },
+          ];
+      }
+      
+      const body = tableData.map(t => {
+        const baseAmount = (typeof t.amountWithGST === 'number' && !isNaN(t.amountWithGST) ? t.amountWithGST : 0) / 1.18;
+        const gstAmount = (typeof t.amountWithGST === 'number' && !isNaN(t.amountWithGST) ? t.amountWithGST : 0) - baseAmount;
+        return [
+          t.billDate || '',
+          t.billNumber || '',
+          t.party || '',
+          baseAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 }),
+          gstAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 }),
+          (typeof t.amountWithGST === 'number' && !isNaN(t.amountWithGST) ? t.amountWithGST : 0).toLocaleString('en-IN', { minimumFractionDigits: 2 }),
         ];
-        break;
-      case 'purchases':
-        tableData = purchases;
-        summaryData = [
-            { title: 'Total Purchases (incl. GST)', value: formatCurrency(totals.totalPurchases) },
-            { title: 'GST Paid', value: formatCurrency(totals.totalGstPurchases) }
-        ];
-        break;
-      default:
-        tableData = transactions;
-        summaryData = [
-          { title: 'Total Sales', value: formatCurrency(totals.totalSales) },
-          { title: 'Total Purchases', value: formatCurrency(totals.totalPurchases) },
-          { title: 'Net GST Payable', value: formatCurrency(totals.netGst) },
-          { title: 'Net Profit', value: formatCurrency(totals.netProfit) },
-        ];
-    }
-    
-    const body = tableData.map(t => {
-      const baseAmount = (typeof t.amountWithGST === 'number' && !isNaN(t.amountWithGST) ? t.amountWithGST : 0) / 1.18;
-      const gstAmount = (typeof t.amountWithGST === 'number' && !isNaN(t.amountWithGST) ? t.amountWithGST : 0) - baseAmount;
-      return [
-        t.billDate || '',
-        t.billNumber || '',
-        t.party || '',
-        baseAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 }),
-        gstAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 }),
-        (typeof t.amountWithGST === 'number' && !isNaN(t.amountWithGST) ? t.amountWithGST : 0).toLocaleString('en-IN', { minimumFractionDigits: 2 }),
-      ];
-    });
+      });
 
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const margin = 15;
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const margin = 15;
 
-    // Header
-    doc.setFillColor(0, 0, 0);
-    doc.rect(0, 0, pageWidth, 30, 'F');
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(22);
-    doc.setTextColor(255, 255, 255);
-    doc.text('SS Engineering', margin, 18);
-    
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    doc.setTextColor(220, 220, 220);
-    doc.text('123 Industrial Area, Pune, MH, 411001', pageWidth - margin, 12, { align: 'right' });
-    doc.text('GSTIN: 27ABCDE1234F1Z5', pageWidth - margin, 18, { align: 'right' });
+      // Header
+      doc.setFillColor(0, 0, 0);
+      doc.rect(0, 0, pageWidth, 30, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(22);
+      doc.setTextColor(255, 255, 255);
+      doc.text('SS Engineering', margin, 18);
+      
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(220, 220, 220);
+      doc.text('123 Industrial Area, Pune, MH, 411001', pageWidth - margin, 12, { align: 'right' });
+      doc.text('GSTIN: 27ABCDE1234F1Z5', pageWidth - margin, 18, { align: 'right' });
 
-    // Report Title
-    doc.setFontSize(24);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(34, 49, 63);
-    doc.text(docTitle, margin, 50);
-    doc.setDrawColor(249, 115, 22);
-    doc.setLineWidth(0.5);
-    doc.line(margin, 53, pageWidth - margin, 53);
-    
-    // Summary Table
-    const summaryBody = summaryData.map(item => [
-      { content: item.title, styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
-      { content: item.value, styles: { halign: 'right' } }
-    ]);
-    
-    doc.autoTable({
-        body: summaryBody,
-        startY: 65,
+      // Report Title
+      doc.setFontSize(24);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(34, 49, 63);
+      doc.text(docTitle, margin, 50);
+      doc.setDrawColor(249, 115, 22);
+      doc.setLineWidth(0.5);
+      doc.line(margin, 53, pageWidth - margin, 53);
+      
+      // Summary Table
+      const summaryBody = summaryData.map(item => [
+        { content: item.title, styles: { fontStyle: 'bold', fillColor: [243, 244, 246] } },
+        { content: item.value, styles: { halign: 'right' } }
+      ]);
+      
+      doc.autoTable({
+          body: summaryBody,
+          startY: 65,
+          theme: 'grid',
+          tableWidth: 'auto',
+          styles: {
+            font: 'helvetica',
+            fontSize: 10,
+            cellPadding: 3,
+          },
+          columnStyles: {
+              0: { cellWidth: 80 },
+              1: { cellWidth: 50 },
+          },
+          didDrawPage: (data: any) => {
+            data.settings.margin.top = 20;
+          },
+          showHead: 'never'
+      });
+
+      // Main Table
+      const tableStartY = (doc as any).lastAutoTable.finalY + 15;
+      doc.autoTable({
+        startY: tableStartY,
+        head: [['Bill Date', 'Bill No.', 'Party', 'Base Amt', 'GST (18%)', 'Total Amt']],
+        body: body,
         theme: 'grid',
-        tableWidth: 'auto',
+        headStyles: {
+          fillColor: [0, 0, 0],
+          textColor: 255,
+          fontStyle: 'bold',
+          halign: 'center'
+        },
         styles: {
           font: 'helvetica',
-          fontSize: 10,
-          cellPadding: 3,
+          fontSize: 9,
         },
         columnStyles: {
-            0: { cellWidth: 80 },
-            1: { cellWidth: 50 },
+          3: { halign: 'right' },
+          4: { halign: 'right' },
+          5: { halign: 'right' },
         },
         didDrawPage: (data: any) => {
-          data.settings.margin.top = 20;
-        },
-        showHead: 'never'
-    });
+          // Footer
+          const pageHeight = doc.internal.pageSize.getHeight();
+          doc.setLineWidth(0.2);
+          doc.setDrawColor(200);
+          doc.line(margin, pageHeight - 20, pageWidth - margin, pageHeight - 20);
+          doc.setFontSize(8);
+          doc.setTextColor(150);
+          doc.text(
+            'This is a computer-generated report and does not require a signature.',
+            margin,
+            pageHeight - 10
+          );
+          doc.text(
+            `Page ${(doc as any).internal.pages.length - 1}`,
+            pageWidth - margin,
+            pageHeight - 10,
+            { align: 'right' }
+          );
+        }
+      });
 
-
-    // Main Table
-    const tableStartY = (doc as any).lastAutoTable.finalY + 15;
-    doc.autoTable({
-      startY: tableStartY,
-      head: [['Bill Date', 'Bill No.', 'Party', 'Base Amt', 'GST (18%)', 'Total Amt']],
-      body: body,
-      theme: 'grid',
-      headStyles: {
-        fillColor: [0, 0, 0],
-        textColor: 255,
-        fontStyle: 'bold',
-        halign: 'center'
-      },
-      styles: {
-        font: 'helvetica',
-        fontSize: 9,
-      },
-      columnStyles: {
-        3: { halign: 'right' },
-        4: { halign: 'right' },
-        5: { halign: 'right' },
-      },
-      didDrawPage: (data: any) => {
-        // Footer
-        const pageHeight = doc.internal.pageSize.getHeight();
-        doc.setLineWidth(0.2);
-        doc.setDrawColor(200);
-        doc.line(margin, pageHeight - 20, pageWidth - margin, pageHeight - 20);
-        doc.setFontSize(8);
-        doc.setTextColor(150);
-        doc.text(
-          'This is a computer-generated report and does not require a signature.',
-          margin,
-          pageHeight - 10
-        );
-        doc.text(
-          `Page ${doc.internal.pages.length - 1}`,
-          pageWidth - margin,
-          pageHeight - 10,
-          { align: 'right' }
-        );
-      }
-    });
-
-    doc.save(fileName);
+      doc.save(fileName);
+    } catch (error) {
+      console.error('Failed to export PDF:', error);
+      toast({
+        title: "Error",
+        description: "Failed to export PDF. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   if (loading && transactions.length === 0) {
@@ -401,7 +420,6 @@ export default function EntriesPage() {
       </div>
     );
   }
-
 
   return (
     <div className="space-y-8 p-4 sm:p-6 lg:p-8">
@@ -457,7 +475,7 @@ export default function EntriesPage() {
             <ArrowLeftRight className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className={`text-2xl font-bold ${totals.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+            <div className={`text-1xl font-bold ${totals.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
               {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(typeof totals.netProfit === 'number' && !isNaN(totals.netProfit) ? totals.netProfit : 0)}
             </div>
             <p className="text-xs text-muted-foreground">

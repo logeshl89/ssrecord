@@ -24,9 +24,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       // Parse the data properly to ensure correct types
       const parsedData: Transaction[] = rawData.map((item: any) => ({
         ...item,
-        date: new Date(item.date),
-        amount: typeof item.amount === 'string' ? parseFloat(item.amount) : item.amount,
-        amountWithGST: typeof item.amountWithGST === 'string' ? parseFloat(item.amountWithGST) : item.amountWithGST
+        date: item.date ? new Date(item.date) : new Date(),
+        amount: typeof item.amount === 'string' ? parseFloat(item.amount) : 
+                typeof item.amount === 'number' ? item.amount : 0,
+        amountWithGST: typeof item.amountWithGST === 'string' ? parseFloat(item.amountWithGST) : 
+                      typeof item.amountWithGST === 'number' ? item.amountWithGST : 0
       }));
       
       // Sort transactions by date (newest first)
@@ -114,7 +116,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     
     transactions.forEach(transaction => {
       // Use a fallback for month if not present
-      const month = transaction.month || new Date(transaction.date).toLocaleString('default', { month: 'short', year: 'numeric' }) || 'Unknown';
+      const month = transaction.month || 
+                   (transaction.date ? new Date(transaction.date).toLocaleString('default', { month: 'short', year: 'numeric' }) : 'Unknown') || 
+                   'Unknown';
       
       if (!monthlyData[month]) {
         monthlyData[month] = { sales: 0, purchases: 0 };
