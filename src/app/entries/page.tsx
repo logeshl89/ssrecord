@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { useToast } from '@/hooks/use-toast';
+import { useAppData } from '@/contexts/app-data-context';
 
 interface jsPDFWithAutoTable extends jsPDF {
   autoTable: (options: any) => jsPDF;
@@ -20,8 +21,7 @@ interface jsPDFWithAutoTable extends jsPDF {
 
 
 export default function EntriesPage() {
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { transactions, loading, error, refreshTransactions } = useAppData();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [formType, setFormType] = useState<'Sale' | 'Purchase'>('Sale');
   const [activeTab, setActiveTab] = useState<'all' | 'sales' | 'purchases'>('all');
@@ -33,34 +33,7 @@ export default function EntriesPage() {
   const recordsPerPage = 5;
   const { toast } = useToast();
 
-  // Fetch transactions from database
-  useEffect(() => {
-    const fetchTransactions = async () => {
-      try {
-        const response = await fetch('/api/transactions');
-        const data = await response.json();
-        
-        if (response.ok) {
-          setTransactions(data.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-        } else {
-          throw new Error(data.error || 'Failed to load transactions');
-        }
-      } catch (error) {
-        console.error('Failed to fetch transactions:', error);
-        toast({
-          title: "Error",
-          description: "Failed to load transactions. Please try again.",
-          variant: "destructive",
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchTransactions();
-  }, [toast]);
-
-  const handleAddOrUpdateTransaction = async (transactionData: Omit<Transaction, 'id' | 'amount'> & { id?: string; amountWithGST: number }) => {
+  const handleAddOrUpdateTransaction = async (transactionData: Omit<Transaction, 'id' | 'amount' | 'billNumber' | 'month'> & { id?: string; amountWithGST: number }) => {
     try {
       const baseAmount = transactionData.amountWithGST / 1.18;
       const newTransaction = { ...transactionData, amount: baseAmount };
@@ -103,25 +76,15 @@ export default function EntriesPage() {
       const data = await response.json();
       
       if (response.ok) {
+        // Refresh the data after successful operation
+        refreshTransactions();
+        
         if (newTransaction.id) {
-          // Update existing transaction in state
-          setTransactions(prev =>
-            prev.map(t =>
-              t.id === newTransaction.id ? data : t
-            ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-          );
-          
           toast({
             title: "Success",
             description: "Transaction updated successfully.",
           });
         } else {
-          // Add new transaction to state
-          setTransactions(prev => [
-            data,
-            ...prev
-          ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-          
           toast({
             title: "Success",
             description: "Transaction added successfully.",
@@ -159,7 +122,9 @@ export default function EntriesPage() {
         const data = await response.json();
         
         if (response.ok) {
-          setTransactions(prev => prev.filter(t => t.id !== deletingTransactionId));
+          // Refresh the data after successful deletion
+          refreshTransactions();
+          
           toast({
             title: "Success",
             description: "Transaction deleted successfully.",
@@ -187,15 +152,23 @@ export default function EntriesPage() {
     setIsFormOpen(true);
   }
 
-  const sales = useMemo(() => transactions.filter(t => t.type === 'Sale'), [transactions]);
-  const purchases = useMemo(() => transactions.filter(t => t.type === 'Purchase'), [transactions]);
+  const sales = useMemo(() => {
+    return transactions.filter(t => t.type === 'Sale');
+  }, [transactions]);
+  
+  const purchases = useMemo(() => {
+    return transactions.filter(t => t.type === 'Purchase');
+  }, [transactions]);
 
   const totals = useMemo(() => {
-    const totalSales = sales.reduce((sum, t) => sum + t.amountWithGST, 0);
-    const totalPurchases = purchases.reduce((sum, t) => sum + t.amountWithGST, 0);
+    const salesTransactions = sales;
+    const purchaseTransactions = purchases;
     
-    const totalBaseSales = sales.reduce((sum, t) => sum + t.amount, 0);
-    const totalBasePurchases = purchases.reduce((sum, t) => sum + t.amount, 0);
+    const totalSales = salesTransactions.reduce((sum, t) => sum + (t.amountWithGST || 0), 0);
+    const totalPurchases = purchaseTransactions.reduce((sum, t) => sum + (t.amountWithGST || 0), 0);
+    
+    const totalBaseSales = salesTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
+    const totalBasePurchases = purchaseTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
     
     const totalGstSales = totalSales - totalBaseSales;
     const totalGstPurchases = totalPurchases - totalBasePurchases;
@@ -207,7 +180,7 @@ export default function EntriesPage() {
   }, [sales, purchases]);
   
   const paginatedData = useMemo(() => {
-    let data;
+    let data: Transaction[] = [];
     if (activeTab === 'sales') {
       data = sales;
     } else if (activeTab === 'purchases') {
@@ -221,7 +194,7 @@ export default function EntriesPage() {
   }, [transactions, sales, purchases, activeTab, currentPage]);
   
   const totalPages = useMemo(() => {
-    let data;
+    let data: Transaction[] = [];
     if (activeTab === 'sales') {
       data = sales;
     } else if (activeTab === 'purchases') {
@@ -270,15 +243,15 @@ export default function EntriesPage() {
     }
     
     const body = tableData.map(t => {
-      const baseAmount = t.amountWithGST / 1.18;
-      const gstAmount = t.amountWithGST - baseAmount;
+      const baseAmount = (t.amountWithGST || 0) / 1.18;
+      const gstAmount = (t.amountWithGST || 0) - baseAmount;
       return [
-        t.billDate,
-        t.billNumber,
-        t.party,
+        t.billDate || '',
+        t.billNumber || '',
+        t.party || '',
         baseAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 }),
         gstAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 }),
-        t.amountWithGST.toLocaleString('en-IN', { minimumFractionDigits: 2 }),
+        (t.amountWithGST || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 }),
       ];
     });
 
@@ -328,7 +301,7 @@ export default function EntriesPage() {
             0: { cellWidth: 80 },
             1: { cellWidth: 50 },
         },
-        didDrawPage: (data) => {
+        didDrawPage: (data: any) => {
           data.settings.margin.top = 20;
         },
         showHead: 'never'
@@ -357,7 +330,7 @@ export default function EntriesPage() {
         4: { halign: 'right' },
         5: { halign: 'right' },
       },
-      didDrawPage: (data) => {
+      didDrawPage: (data: any) => {
         // Footer
         const pageHeight = doc.internal.pageSize.getHeight();
         doc.setLineWidth(0.2);
@@ -382,10 +355,18 @@ export default function EntriesPage() {
     doc.save(fileName);
   };
 
-  if (loading) {
+  if (loading && transactions.length === 0) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-xl">Loading transactions...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-xl text-red-500">Error: {error}</div>
       </div>
     );
   }

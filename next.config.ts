@@ -6,6 +6,8 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   images: {
+    // Allow local images to be served
+    unoptimized: true, // This helps with static image serving in some deployment environments
     remotePatterns: [
       {
         protocol: 'https',
@@ -20,6 +22,16 @@ const nextConfig: NextConfig = {
         pathname: '/**',
       },
     ],
+  },
+  // Production optimizations
+  compress: true,
+  poweredByHeader: false,
+  reactStrictMode: true,
+  // Ensure static files are properly served
+  output: 'standalone',
+  // Experimental features for better static asset handling
+  experimental: {
+    outputFileTracing: true,
   },
 };
 

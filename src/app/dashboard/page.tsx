@@ -4,8 +4,10 @@ import { BarChart, CreditCard, DollarSign, Package } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { OverviewChart } from "@/components/dashboard/overview-chart";
 import { useEffect, useState } from "react";
+import { useAppData } from "@/contexts/app-data-context";
 
 export default function DashboardPage() {
+  const { transactions, loading, calculateDashboardStats, calculateMonthlyOverview } = useAppData();
   const [stats, setStats] = useState({
     totalRevenue: 0,
     totalPurchases: 0,
@@ -16,32 +18,14 @@ export default function DashboardPage() {
   });
   
   const [monthlyData, setMonthlyData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
 
+  // Calculate stats and monthly data when transactions change
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const response = await fetch('/api/dashboard');
-        const data = await response.json();
-        
-        if (response.ok) {
-          setStats({
-            ...data.stats,
-            totalTransactions: data.stats.totalSales + data.stats.totalPurchaseEntries
-          });
-          setMonthlyData(data.monthlyData);
-        } else {
-          throw new Error(data.error || 'Failed to fetch dashboard data');
-        }
-      } catch (error) {
-        console.error("Failed to fetch dashboard data:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, []);
+    if (transactions.length > 0) {
+      setStats(calculateDashboardStats());
+      setMonthlyData(calculateMonthlyOverview());
+    }
+  }, [transactions, calculateDashboardStats, calculateMonthlyOverview]);
 
   if (loading) {
     return (

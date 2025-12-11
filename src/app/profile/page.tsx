@@ -18,6 +18,9 @@ export default function ProfilePage() {
   const router = useRouter()
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
 
   const handleLogout = async () => {
     setIsLoading(true)
@@ -46,6 +49,74 @@ export default function ProfilePage() {
     } catch (error) {
       toast({
         title: "Logout Error",
+        description: "An unexpected error occurred. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handlePasswordUpdate = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsLoading(true)
+    
+    try {
+      // Validate passwords
+      if (newPassword !== confirmPassword) {
+        toast({
+          title: "Password Error",
+          description: "New passwords do not match.",
+          variant: "destructive",
+        })
+        return
+      }
+      
+      if (newPassword.length < 6) {
+        toast({
+          title: "Password Error",
+          description: "New password must be at least 6 characters long.",
+          variant: "destructive",
+        })
+        return
+      }
+      
+      // In a real app, you would get the user ID from the session/token
+      // For now, we'll use a placeholder ID (1 for admin user)
+      const response = await fetch('/api/auth/password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: 1, // Placeholder - in real app, get from session
+          currentPassword,
+          newPassword
+        }),
+      })
+      
+      const data = await response.json()
+      
+      if (response.ok) {
+        toast({
+          title: "Success",
+          description: "Password updated successfully.",
+        })
+        
+        // Clear password fields
+        setCurrentPassword('')
+        setNewPassword('')
+        setConfirmPassword('')
+      } else {
+        toast({
+          title: "Password Update Failed",
+          description: data.error || "Failed to update password.",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      toast({
+        title: "Password Update Error",
         description: "An unexpected error occurred. Please try again.",
         variant: "destructive",
       })
@@ -99,17 +170,43 @@ export default function ProfilePage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="current-password">Current Password</Label>
-              <Input id="current-password" type="password" />
+          <form onSubmit={handlePasswordUpdate}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="current-password">Current Password</Label>
+                <Input 
+                  id="current-password" 
+                  type="password" 
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="new-password">New Password</Label>
+                <Input 
+                  id="new-password" 
+                  type="password" 
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="confirm-password">Confirm New Password</Label>
+                <Input 
+                  id="confirm-password" 
+                  type="password" 
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  required
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="new-password">New Password</Label>
-              <Input id="new-password" type="password" />
-            </div>
-          </div>
-          <Button>Update Password</Button>
+            <Button type="submit" disabled={isLoading} className="mt-4">
+              {isLoading ? "Updating..." : "Update Password"}
+            </Button>
+          </form>
         </CardContent>
       </Card>
     </div>

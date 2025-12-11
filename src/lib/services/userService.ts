@@ -20,6 +20,12 @@ export interface LoginInput {
   password: string;
 }
 
+export interface UpdatePasswordInput {
+  userId: number;
+  currentPassword: string;
+  newPassword: string;
+}
+
 // Get user by email
 export async function getUserByEmail(email: string): Promise<User | null> {
   const result = await query(
@@ -86,4 +92,42 @@ export async function authenticateUser(input: LoginInput): Promise<User | null> 
   }
   
   return user;
+}
+
+// Update user password
+export async function updateUserPassword(input: UpdatePasswordInput): Promise<boolean> {
+  try {
+    // First, get the current password hash
+    const userResult = await query(
+      `SELECT password_hash FROM users WHERE id = $1`,
+      [input.userId]
+    );
+    
+    if (userResult.rows.length === 0) {
+      return false;
+    }
+    
+    const currentPasswordHash = userResult.rows[0].password_hash;
+    
+    // Verify current password
+    const isMatch = await bcrypt.compare(input.currentPassword, currentPasswordHash);
+    if (!isMatch) {
+      return false;
+    }
+    
+    // Hash the new password
+    const saltRounds = 10;
+    const newPasswordHash = await bcrypt.hash(input.newPassword, saltRounds);
+    
+    // Update the password
+    const updateResult = await query(
+      `UPDATE users SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+      [newPasswordHash, input.userId]
+    );
+    
+    return updateResult.rowCount > 0;
+  } catch (error) {
+    console.error('Error updating password:', error);
+    return false;
+  }
 }

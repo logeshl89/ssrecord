@@ -8,7 +8,10 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "db:init": "npx tsx init-db.ts"
+    "db:init": "npx tsx init-db.ts",
+    "build:prod": "next build",
+    "start:prod": "next start",
+    "optimize": "next build && next export"
   },
   "dependencies": {
     "@hookform/resolvers": "^4.1.3",
